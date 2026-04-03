@@ -45,7 +45,8 @@ struct KdaChunkFwdRecompWUKernelSm100 {
 
     // Pipeline types (for construction in operator())
     using PipelineA = typename Mainloop::PipelineA;
-    using PipelineKG = typename Mainloop::PipelineKG;
+    using PipelineK = typename Mainloop::PipelineK;
+    using PipelineG = typename Mainloop::PipelineG;
     using PipelineV = typename Mainloop::PipelineV;
     using PipelineBeta = typename Mainloop::PipelineBeta;
     using PipelinePrologueReady = typename Mainloop::PipelinePrologueReady;
@@ -53,7 +54,8 @@ struct KdaChunkFwdRecompWUKernelSm100 {
 
     // Pipeline state types
     using PipelineStateA = typename Mainloop::PipelineStateA;
-    using PipelineStateKG = typename Mainloop::PipelineStateKG;
+    using PipelineStateK = typename Mainloop::PipelineStateK;
+    using PipelineStateG = typename Mainloop::PipelineStateG;
     using PipelineStateV = typename Mainloop::PipelineStateV;
     using PipelineStateBeta = typename Mainloop::PipelineStateBeta;
     using PipelineStatePrologueReady = typename Mainloop::PipelineStatePrologueReady;
@@ -168,18 +170,26 @@ struct KdaChunkFwdRecompWUKernelSm100 {
             v_pipe_params.role = PipelineV::ThreadCategory::Consumer;
         }
 
-        // PipelineKG: Load(producer) → Prologue(128) consumers
-        // Merged K (bf16) + G (fp32) TMA copies share one barrier
-        // KG output is now computed in prologue, so only Prologue consumes KG
-        typename PipelineKG::Params kg_pipe_params;
-        kg_pipe_params.transaction_bytes =
-            sizeof(bf16) * cosize_v<SmemLayoutInputBF16> + sizeof(float) * cosize_v<SmemLayoutInputFP32>;
-        kg_pipe_params.is_leader = lane_predicate && (role == WarpRole::Load);
-        kg_pipe_params.num_consumers = NumPrologueThreads;
+        // PipelineK: Load(producer) → Prologue(128) consumers
+        typename PipelineK::Params k_pipe_params;
+        k_pipe_params.transaction_bytes = sizeof(bf16) * cosize_v<SmemLayoutInputBF16>;
+        k_pipe_params.is_leader = lane_predicate && (role == WarpRole::Load);
+        k_pipe_params.num_consumers = NumPrologueThreads;
         if (role == WarpRole::Load) {
-            kg_pipe_params.role = PipelineKG::ThreadCategory::Producer;
+            k_pipe_params.role = PipelineK::ThreadCategory::Producer;
         } else if (role == WarpRole::Prologue) {
-            kg_pipe_params.role = PipelineKG::ThreadCategory::Consumer;
+            k_pipe_params.role = PipelineK::ThreadCategory::Consumer;
+        }
+
+        // PipelineG: Load(producer) → Prologue(128) consumers
+        typename PipelineG::Params g_pipe_params;
+        g_pipe_params.transaction_bytes = sizeof(float) * cosize_v<SmemLayoutInputFP32>;
+        g_pipe_params.is_leader = lane_predicate && (role == WarpRole::Load);
+        g_pipe_params.num_consumers = NumPrologueThreads;
+        if (role == WarpRole::Load) {
+            g_pipe_params.role = PipelineG::ThreadCategory::Producer;
+        } else if (role == WarpRole::Prologue) {
+            g_pipe_params.role = PipelineG::ThreadCategory::Consumer;
         }
 
         // === Beta pipeline: LoadAux(producer, 64 threads) → Prologue+Epilogue(consumer, 256 threads) ===
@@ -223,7 +233,8 @@ struct KdaChunkFwdRecompWUKernelSm100 {
         // ---------------------------------------------------------------
         // TMA pipelines (PipelineTmaAsync uses ClusterShape for barrier init)
         PipelineA a_pipeline(shared_plan->pipe_a_storage, a_pipe_params, ClusterShape{});
-        PipelineKG kg_pipeline(shared_plan->pipe_kg_storage, kg_pipe_params, ClusterShape{});
+        PipelineK k_pipeline(shared_plan->pipe_k_storage, k_pipe_params, ClusterShape{});
+        PipelineG g_pipeline(shared_plan->pipe_g_storage, g_pipe_params, ClusterShape{});
         PipelineV v_pipeline(shared_plan->pipe_v_storage, v_pipe_params, ClusterShape{});
 
         // PipelineAsync pipelines (use true_type for barrier init)
@@ -242,8 +253,10 @@ struct KdaChunkFwdRecompWUKernelSm100 {
         // ---------------------------------------------------------------
         PipelineStateA a_pipe_state_read;
         PipelineStateA a_pipe_state_write = cutlass::make_producer_start_state<PipelineA>();
-        PipelineStateKG kg_pipe_state_read;
-        PipelineStateKG kg_pipe_state_write = cutlass::make_producer_start_state<PipelineKG>();
+        PipelineStateK k_pipe_state_read;
+        PipelineStateK k_pipe_state_write = cutlass::make_producer_start_state<PipelineK>();
+        PipelineStateG g_pipe_state_read;
+        PipelineStateG g_pipe_state_write = cutlass::make_producer_start_state<PipelineG>();
         PipelineStateV v_pipe_state_read;
         PipelineStateV v_pipe_state_write = cutlass::make_producer_start_state<PipelineV>();
 
@@ -273,9 +286,11 @@ struct KdaChunkFwdRecompWUKernelSm100 {
                 tma_params,
                 shared_plan,
                 tile_scheduler,
-                // TMA pipelines (consumer): KG
-                kg_pipeline,
-                kg_pipe_state_read,
+                // TMA pipelines (consumer): K, G
+                k_pipeline,
+                k_pipe_state_read,
+                g_pipeline,
+                g_pipe_state_read,
                 // Beta pipeline (consumer)
                 beta_pipeline,
                 beta_pipe_state_read,
@@ -331,8 +346,10 @@ struct KdaChunkFwdRecompWUKernelSm100 {
                 // TMA pipelines (producer)
                 a_pipeline,
                 a_pipe_state_write,
-                kg_pipeline,
-                kg_pipe_state_write,
+                k_pipeline,
+                k_pipe_state_write,
+                g_pipeline,
+                g_pipe_state_write,
                 v_pipeline,
                 v_pipe_state_write);
 
@@ -359,7 +376,8 @@ struct KdaChunkFwdRecompWUKernelSm100 {
 // ===================================================================
 // Default Kernel type: uses the self-contained mainloop
 // ===================================================================
-using KdaChunkFwdRecompWUKernelSm100Default = KdaChunkFwdRecompWUKernelSm100<KdaChunkFwdRecompWUMainloopSm100>;
+using KdaChunkFwdRecompWUKernelSm100Default = KdaChunkFwdRecompWUKernelSm100<KdaChunkFwdRecompWUMainloopSm100<false>>;
+// TODO: support Store QG
 
 // ===================================================================
 // __global__ kernel wrapper (free function — CUDA requires this)
