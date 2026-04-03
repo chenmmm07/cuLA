@@ -37,7 +37,9 @@ cuLA/
 │   │       ├── kda_fwd_sm100.cu
 │   │       ├── kda_fwd_common.cuh
 │   │       ├── kda_fwd_intra_kernel_sm100.hpp
-│   │       ├── kda_fwd_intra_mainloop_sm100.hpp
+│   │       ├── kda_fwd_intra_mainloop_sm100.hpp # Chunk intra mainloop
+│   │       ├── kda_fwd_recomp_w_u_kernel_sm100.hpp 
+│   │       ├── kda_fwd_recomp_w_u_mainloop_sm100.hpp # Recompute W&U mainloop
 │   │       ├── kda_config.hpp
 │   │       ├── fwd_helpers.hpp
 │   │       ├── sm100_umma_ext.hpp
