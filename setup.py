@@ -203,11 +203,7 @@ ext_modules.append(
 )
 
 setup(
-    name="cula",
-    use_scm_version={
-        "write_to": "cula/_version.py",
-        "local_scheme": "node-and-date",
-    },
+    name="cuda-linear-attention",
     packages=find_packages(include=["cula", "cula.*"]),
     ext_modules=ext_modules,
     cmdclass={"build_ext": BuildExtension},
