@@ -787,7 +787,7 @@ def chunk_kda_fwd_intra(
     kg = torch.empty_like(k) if gk is not None else None
 
     assert beta is not None and gk is not None, (
-        "chunk_kda_fwd_intra: beta and gk must not be None for recompute_w_u_cuda"
+        "chunk_kda_fwd_intra: beta and gk must be provided (not None) as they are required by recompute_w_u_cuda"
     )
     cula_cuda.recompute_w_u_cuda(
         k, v, beta, Akk, gk, cu_seqlens, chunk_indices, w, u, kg, chunk_size, q if disable_recompute else None, qg
