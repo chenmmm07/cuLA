@@ -63,8 +63,8 @@ device = 'cuda'
 q = torch.randn(B, T, H, K, device=device, dtype=torch.bfloat16, requires_grad=True)
 k = torch.randn(B, T, H, K, device=device, dtype=torch.bfloat16, requires_grad=True)
 v = torch.randn(B, T, H, V, device=device, dtype=torch.bfloat16, requires_grad=True)
-g = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1   # gate (log space)
-beta = torch.randn(B, T, H, device=device, dtype=torch.float32).sigmoid()
+g = torch.randn(B, T, H, K, device=device, dtype=torch.bfloat16) * 0.1   # gate (log space)
+beta = torch.randn(B, T, H, device=device, dtype=torch.bfloat16).sigmoid()
 A_log = torch.randn(H, device=device, dtype=torch.float32) * 0.01
 dt_bias = torch.zeros(H * K, device=device, dtype=torch.float32)
 init_state = torch.zeros(B, H, K, V, device=device, dtype=torch.float32)
@@ -92,7 +92,7 @@ print(f'Final state shape: {final_state.shape}')  # [2, 32, 128, 128]
 
 **Notes:**
 - `safe_gate=True` is required to leverage TensorCore acceleration.
-- `beta` and `initial_state` must be `float32`.
+- `beta` supports both `float32` and `bfloat16`; `initial_state` must be `float32`.
 - `cu_seqlens` (for variable-length sequences) must be `int32`.
 
 ## Usage
@@ -177,7 +177,7 @@ See [REPO_LAYOUT.md](REPO_LAYOUT.md) for the full directory structure and a summ
 * [ ] Continuous optimization via agentic methods such as [AVO](https://arxiv.org/abs/2603.24517).
 * [ ] Support for more algorithms.
 * [ ] Small B/H/S optimizations.
-* [ ] Support for BF16 beta input.
+* [x] Support for BF16 beta input.
 
 **Train**
 
